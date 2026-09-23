@@ -140,6 +140,7 @@ function build_opt {
        with_x86=ON
     fi
     cmake .. \
+      -DCMAKE_BUILD_TYPE=Release \
       -DLITE_ON_MODEL_OPTIMIZE_TOOL=ON \
       -DWITH_TESTING=OFF \
       -DLITE_BUILD_EXTRA=ON \
