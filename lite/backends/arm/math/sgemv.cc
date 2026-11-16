@@ -386,15 +386,13 @@ void sgemv_trans(const int M,
         if (cnt4 > 0) {
           int cnt = cnt4;
           asm volatile(
-              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "1:\n"
+              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "fmax v1.4s, v0.4s, %[vzero].4s \n" /*      v0 relu     */
-              "fadd v1.4s, v1.4s, %[vbeta].4s \n"
-              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*   load y to v0   */
+              "fadd v1.4s, v1.4s, %[vbeta].4s \n" /*      add beta    */
               "subs %w[cnt],  %w[cnt], #1     \n" /*      sub cnt     */
               "st1  {v1.4s},  [%[out_y]], #16 \n" /*  store v1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
-              "sub  %[in_y],  %[in_y],  #16   \n" /*   restore in_y   */
               : [cnt] "+r"(cnt), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vbeta] "w"(vbeta)
               : "v0", "v1", "cc", "memory");
@@ -407,16 +405,14 @@ void sgemv_trans(const int M,
         if (cnt4 > 0) {
           int cnt = cnt4;
           asm volatile(
-              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "1:\n"
+              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "fmax v1.4s, v0.4s, %[vzero].4s \n" /*      v0 relu6    */
               "fmin v1.4s, v1.4s, %[vsix].4s  \n" /*      v1 relu6    */
-              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*   load y to v0   */
-              "fadd v1.4s, v1.4s, %[vbeta].4s \n"
+              "fadd v1.4s, v1.4s, %[vbeta].4s \n" /*      add beta    */
               "subs %w[cnt],  %w[cnt], #1     \n" /*      sub cnt     */
               "st1  {v1.4s},  [%[out_y]], #16 \n" /*  store v1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
-              "sub  %[in_y],  %[in_y],  #16   \n" /*   restore in_y   */
               : [cnt] "+r"(cnt), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vsix] "w"(vsix), [vbeta] "w"(vbeta)
               : "v0", "v1", "cc", "memory");
@@ -496,14 +492,12 @@ void sgemv_trans(const int M,
         if (cnt4 > 0) {
           int cnt = cnt4;
           asm volatile(
-              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "1:\n"
+              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "fmax v1.4s, v0.4s, %[vzero].4s \n" /*      v0 relu     */
-              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*   load y to v0   */
               "subs %w[cnt],  %w[cnt], #1     \n" /*      sub cnt     */
               "st1  {v1.4s},  [%[out_y]], #16 \n" /*  store v1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
-              "sub  %[in_y],  %[in_y],  #16   \n" /*   restore in_y   */
               : [cnt] "+r"(cnt), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero)
               : "v0", "v1", "cc", "memory");
@@ -516,15 +510,13 @@ void sgemv_trans(const int M,
         if (cnt4 > 0) {
           int cnt = cnt4;
           asm volatile(
-              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "1:\n"
+              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "fmax v1.4s, v0.4s, %[vzero].4s \n" /*      v0 relu6    */
               "fmin v1.4s, v1.4s, %[vsix].4s  \n" /*      v1 relu6    */
-              "ld1  {v0.4s},  [%[in_y]], #16  \n" /*   load y to v0   */
               "subs %w[cnt],  %w[cnt], #1     \n" /*      sub cnt     */
               "st1  {v1.4s},  [%[out_y]], #16 \n" /*  store v1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
-              "sub  %[in_y],  %[in_y],  #16   \n" /*   restore in_y   */
               : [cnt] "+r"(cnt), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vsix] "w"(vsix)
               : "v0", "v1", "cc", "memory");
@@ -805,15 +797,13 @@ void sgemv_trans(const int M,
         if (m_cnt4 > 0) {
           int cnt4 = m_cnt4;
           asm volatile(
-              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "1:\n"
+              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "vmax.f32 q1, q0,   %q[vzero]   \n" /*      q0 relu     */
-              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*   load y to q0   */
               "vadd.f32 q1, q1, %q[vbeta]     \n"
               "subs %[cnt], %[cnt], #1        \n" /*      sub cnt     */
               "vst1.32  {d2-d3},  [%[out_y]]! \n" /*  store q1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
-              "sub  %[in_y],  %[in_y],  #16   \n" /*   restore in_y   */
               : [cnt] "+r"(cnt4), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vbeta] "w"(vbeta)
               : "q0", "q1", "cc", "memory");
@@ -826,16 +816,14 @@ void sgemv_trans(const int M,
         if (m_cnt4 > 0) {
           int cnt4 = m_cnt4;
           asm volatile(
-              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "1:\n"
+              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "vmax.f32 q1, q0,   %q[vzero]   \n" /*      q0 relu6    */
-              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*   load y to q0   */
               "vmin.f32 q1, q1,   %q[vsix]    \n" /*      q0 relu6    */
               "vadd.f32 q1, q1, %q[vbeta]     \n"
               "subs %[cnt], %[cnt], #1        \n" /*      sub cnt     */
               "vst1.32  {d2-d3},  [%[out_y]]! \n" /*  store q1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
-              "sub  %[in_y],  %[in_y],  #16   \n" /*   restore in_y   */
               : [cnt] "+r"(cnt4), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vsix] "w"(vsix), [vbeta] "w"(vbeta)
               : "q0", "q1", "cc", "memory");
@@ -917,14 +905,12 @@ void sgemv_trans(const int M,
         if (m_cnt4 > 0) {
           int cnt4 = m_cnt4;
           asm volatile(
-              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "1:\n"
+              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "vmax.f32 q1, q0,   %q[vzero]   \n" /*      q0 relu     */
-              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*   load y to q0   */
               "subs %[cnt], %[cnt], #1        \n" /*      sub cnt     */
               "vst1.32  {d2-d3},  [%[out_y]]! \n" /*  store q1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
-              "sub  %[in_y],  %[in_y],  #16   \n" /*   restore in_y   */
               : [cnt] "+r"(cnt4), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero)
               : "q0", "q1", "cc", "memory");
@@ -937,15 +923,13 @@ void sgemv_trans(const int M,
         if (m_cnt4 > 0) {
           int cnt4 = m_cnt4;
           asm volatile(
-              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "1:\n"
+              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "vmax.f32 q1, q0,   %q[vzero]   \n" /*      q0 relu6    */
-              "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*   load y to q0   */
               "vmin.f32 q1, q1,   %q[vsix]    \n" /*      q0 relu6    */
               "subs %[cnt], %[cnt], #1        \n" /*      sub cnt     */
               "vst1.32  {d2-d3},  [%[out_y]]! \n" /*  store q1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
-              "sub  %[in_y],  %[in_y],  #16   \n" /*   restore in_y   */
               : [cnt] "+r"(cnt4), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vsix] "w"(vsix)
               : "q0", "q1", "cc", "memory");
