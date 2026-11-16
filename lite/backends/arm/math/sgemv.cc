@@ -387,18 +387,19 @@ void sgemv_trans(const int M,
           int cnt = cnt4;
           asm volatile(
               "1:\n"
+              "ld1  {v2.4s},  [%[out_y]]       \n" /* load old y to v2 */
               "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "fmax v1.4s, v0.4s, %[vzero].4s \n" /*      v0 relu     */
-              "fadd v1.4s, v1.4s, %[vbeta].4s \n" /*      add beta    */
+              "fmla v1.4s, v2.4s, %[vbeta].4s \n" /* add beta*old y   */
               "subs %w[cnt],  %w[cnt], #1     \n" /*      sub cnt     */
               "st1  {v1.4s},  [%[out_y]], #16 \n" /*  store v1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
               : [cnt] "+r"(cnt), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vbeta] "w"(vbeta)
-              : "v0", "v1", "cc", "memory");
+              : "v0", "v1", "v2", "cc", "memory");
         }
         for (int r = 0; r < remain; ++r) {
-          y[r] = beta * y[r] + in_y[r] > 0.f ? in_y[r] : 0.f;
+          y[r] = beta * y[r] + (in_y[r] > 0.f ? in_y[r] : 0.f);
         }
       } else if (act == lite_api::ActivationType::kRelu6) {
         float32x4_t vsix = vdupq_n_f32(six);
@@ -406,20 +407,21 @@ void sgemv_trans(const int M,
           int cnt = cnt4;
           asm volatile(
               "1:\n"
+              "ld1  {v2.4s},  [%[out_y]]       \n" /* load old y to v2 */
               "ld1  {v0.4s},  [%[in_y]], #16  \n" /*  load y to v0    */
               "fmax v1.4s, v0.4s, %[vzero].4s \n" /*      v0 relu6    */
               "fmin v1.4s, v1.4s, %[vsix].4s  \n" /*      v1 relu6    */
-              "fadd v1.4s, v1.4s, %[vbeta].4s \n" /*      add beta    */
+              "fmla v1.4s, v2.4s, %[vbeta].4s \n" /* add beta*old y   */
               "subs %w[cnt],  %w[cnt], #1     \n" /*      sub cnt     */
               "st1  {v1.4s},  [%[out_y]], #16 \n" /*  store v1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
               : [cnt] "+r"(cnt), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vsix] "w"(vsix), [vbeta] "w"(vbeta)
-              : "v0", "v1", "cc", "memory");
+              : "v0", "v1", "v2", "cc", "memory");
         }
         for (int r = 0; r < remain; ++r) {
           float tmp = in_y[r] > 0.f ? in_y[r] : 0.f;
-          y[r] = beta * y[r] + (tmp > six ? six : y[r]);
+          y[r] = beta * y[r] + (tmp > six ? six : tmp);
         }
       } else if (act == lite_api::ActivationType::kLeakyRelu) {
         float32x4_t valpha = vdupq_n_f32(alpha);
@@ -427,17 +429,19 @@ void sgemv_trans(const int M,
           int cnt = cnt4;
           asm volatile(
               "1:\n"
+              "ld1   {v2.4s},  [%[out_y]]       \n" /* load old y to v2 */
               "ld1   {v0.4s},  [%[in_y]],   #16 \n" /*   load y to v0   */
               "fcmge v4.4s, v0.4s,  %[vzero].4s \n" /*    vcgeq_f32     */
               "fmul  v5.4s, v0.4s, %[valpha].4s \n" /*    vmulq_f32     */
-              "bif   v0.16b,   v5.16b,   v4.16b \n" /*      choose      */
-              "fadd  v0.4s, v0.4s, %[vbeta].4s \n"
+              "mov   v1.16b,  v0.16b            \n" /*   copy in_y      */
+              "bif   v1.16b,   v5.16b,   v4.16b \n" /*      choose      */
+              "fmla  v1.4s, v2.4s, %[vbeta].4s  \n" /* add beta*old y   */
               "subs  %w[cnt],  %w[cnt], #1      \n" /*      sub cnt     */
-              "st1   {v0.4s},  [%[out_y]], #16  \n" /*  store v0 to y   */
+              "st1   {v1.4s},  [%[out_y]], #16  \n" /*  store v1 to y   */
               "bne   1b                         \n" /* branch to label 1*/
               : [cnt] "+r"(cnt), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [valpha] "w"(valpha), [vbeta] "w"(vbeta)
-              : "v0", "v4", "v5", "cc", "memory");
+              : "v0", "v1", "v2", "v4", "v5", "cc", "memory");
         }
         for (int r = 0; r < remain; ++r) {
           y[r] = beta * y[r] + (in_y[r] < 0.f ? alpha * in_y[r] : in_y[r]);
@@ -450,15 +454,16 @@ void sgemv_trans(const int M,
           int cnt = cnt4;
           asm volatile(
               "1:\n"
+              "ld1   {v2.4s},  [%[out_y]]       \n" /* load old y to v2 */
               "ld1   {v0.4s},  [%[in_y]],   #16 \n"
               "fadd  v4.4s,  v0.4s,  %[voffset].4s \n"
               "fmul  v5.4s,  v0.4s,  %[vscale].4s \n"
               "fmax  v1.4s,  v4.4s,  %[vzero].4s\n"
               "fmin  v1.4s,  v1.4s,  %[vthreshold].4s\n"
-              "fmul  v0.4s, v5.4s, v1.4s\n"
-              "fadd  v0.4s, v0.4s, %[vbeta].4s \n"
+              "fmul  v1.4s, v5.4s, v1.4s\n"
+              "fmla  v1.4s, v2.4s, %[vbeta].4s \n" /* add beta*old y   */
               "subs  %w[cnt],  %w[cnt], #1      \n" /*      sub cnt     */
-              "st1   {v0.4s},  [%[out_y]], #16  \n" /*  store v0 to y   */
+              "st1   {v1.4s},  [%[out_y]], #16  \n" /*  store v1 to y   */
               "bne   1b                         \n" /* branch to label 1*/
               : [cnt] "+r"(cnt), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero),
@@ -466,7 +471,7 @@ void sgemv_trans(const int M,
                 [vbeta] "w"(vbeta),
                 [voffset] "w"(voffset),
                 [vthreshold] "w"(vthreshold)
-              : "v0", "v1", "v4", "v5", "cc", "memory");
+              : "v0", "v1", "v2", "v4", "v5", "cc", "memory");
         }
         for (int r = 0; r < remain; ++r) {
           auto tmp =
@@ -657,36 +662,28 @@ void sgemv_trans(const int M,
         int cnt8 = m_cnt8;
         asm volatile(
             "vld1.32  {d4-d5},  [%[x]]    \n" /* load x   to q2     */
+            "1:\n"
             "vld1.32  {d6-d9},  [%[in0]]! \n" /* load in0 to q3, q4 */
             "vld1.32  {d10-d13},[%[in1]]! \n" /* load in1 to q5, q6 */
             "vld1.32  {d14-d17},[%[in2]]! \n" /* load in2 to q7, q8 */
             "vld1.32  {d18-d21},[%[in3]]! \n" /* load in3 to q9, q10*/
-            "1:\n"
             "vld1.32  {d0-d3},  [%[y]]    \n" /*  load y to q0, q1  */
             "vmla.f32 q0, q3,   d4[0]     \n" /*  q0 += q3 * q2[0]  */
             "vmla.f32 q1, q4,   d4[0]     \n" /*  q1 += q4 * q2[0]  */
             "pld  [%[in0]]                \n" /*    preload in0     */
-            "vld1.32  {d6-d9},  [%[in0]]! \n" /* load in0 to q3, q4 */
             "vmla.f32 q0, q5,   d4[1]     \n" /*  q0 += q5 * q2[1]  */
             "vmla.f32 q1, q6,   d4[1]     \n" /*  q1 += q6 * q2[1]  */
             "pld  [%[in1]]                \n" /*    preload in1     */
-            "vld1.32  {d10-d13},[%[in1]]! \n" /* load in0 to q5, q6 */
             "vmla.f32 q0, q7,   d5[0]     \n" /*  q0 += q7 * q2[2]  */
             "vmla.f32 q1, q8,   d5[0]     \n" /*  q1 += q8 * q2[2]  */
             "pld  [%[in2]]                \n" /*    preload in2     */
-            "vld1.32  {d14-d17},[%[in2]]! \n" /* load in0 to q7, q8 */
             "vmla.f32 q0, q9,   d5[1]     \n" /*  q0 += q9 * q2[3]  */
             "vmla.f32 q1, q10,  d5[1]     \n" /*  q1 += q10 * q2[3] */
             "subs %[cnt], %[cnt], #1      \n" /*      sub cnt       */
             "pld  [%[in3]]                \n" /*    preload in3     */
             "vst1.32  {d0-d3},  [%[y]]!   \n" /*  store q0, q1 to y */
-            "vld1.32  {d18-d21},[%[in3]]! \n" /* load in0 to q9, q10*/
             "pld  [%[y], #32] \n"             /*     preload y      */
             "bne  1b  \n"                     /*  branch to label 1 */
-            "sub  %[in0], %[in0], #32     \n" /* restore in0 address */
-            "sub  %[in1], %[in1], #32     \n" /* restore in1 address */
-            "sub  %[in2], %[in2], #32     \n" /* restore in2 address */
-            "sub  %[in3], %[in3], #32     \n" /* restore in3 address */
             : [cnt] "+r"(cnt8),
               [in0] "+r"(in0_ptr),
               [in1] "+r"(in1_ptr),
@@ -701,32 +698,24 @@ void sgemv_trans(const int M,
       if (m_cnt4 > 0) {
         int cnt4 = m_cnt4;
         asm volatile(
+            "vld1.32  {d10-d11},[%[x]]    \n" /* load x   to q5  */
+            "1:\n"
             "vld1.32  {d2-d3},  [%[in0]]! \n" /* load in0 to q1  */
             "vld1.32  {d4-d5},  [%[in1]]! \n" /* load in1 to q2  */
             "vld1.32  {d6-d7},  [%[in2]]! \n" /* load in2 to q3  */
             "vld1.32  {d8-d9},  [%[in3]]! \n" /* load in3 to q4  */
-            "vld1.32  {d10-d11},[%[x]]    \n" /* load x   to q5  */
-            "1:\n"
             "vld1.32  {d0-d1},  [%[y]]    \n" /*   load y to q0    */
             "vmla.f32 q0, q1,   d10[0]    \n" /* q0 += q1 * q5[0]  */
             "pld  [%[in0]]                \n" /*    preload in0    */
-            "vld1.32  {d2-d3},  [%[in0]]! \n" /*  load in0 to q1   */
             "vmla.f32 q0, q2,   d10[1]    \n" /* q0 += q2 * q5[1]  */
             "pld  [%[in1]]                \n" /*    preload in1    */
-            "vld1.32  {d4-d5},  [%[in1]]! \n" /*  load in0 to q2   */
             "vmla.f32 q0, q3,   d11[0]    \n" /* q0 += q3 * q5[2]  */
             "pld  [%[in2]]                \n" /*    preload in2    */
-            "vld1.32  {d6-d7},  [%[in2]]! \n" /*  load in0 to q3   */
             "vmla.f32 q0, q4,   d11[1]    \n" /* q0 += q4 * q5[3]  */
             "subs %[cnt], %[cnt], #1      \n" /*      sub cnt      */
             "pld  [%[in3]]                \n" /*    preload in3    */
             "vst1.32  {d0-d1},  [%[y]]!   \n" /*  store q0 to y    */
-            "vld1.32  {d8-d9},  [%[in3]]! \n" /*  load in0 to q4   */
             "bne  1b  \n"                     /*  branch to label 1 */
-            "sub  %[in0], %[in0], #16     \n" /* restore in0 address*/
-            "sub  %[in1], %[in1], #16     \n" /* restore in1 address*/
-            "sub  %[in2], %[in2], #16     \n" /* restore in2 address*/
-            "sub  %[in3], %[in3], #16     \n" /* restore in3 address*/
             : [cnt] "+r"(cnt4),
               [in0] "+r"(in0_ptr),
               [in1] "+r"(in1_ptr),
@@ -798,15 +787,16 @@ void sgemv_trans(const int M,
           int cnt4 = m_cnt4;
           asm volatile(
               "1:\n"
+              "vld1.32  {d4-d5},  [%[out_y]]  \n" /* load old y to q2 */
               "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "vmax.f32 q1, q0,   %q[vzero]   \n" /*      q0 relu     */
-              "vadd.f32 q1, q1, %q[vbeta]     \n"
+              "vmla.f32 q1, q2,   %q[vbeta]   \n" /* add beta*old y   */
               "subs %[cnt], %[cnt], #1        \n" /*      sub cnt     */
               "vst1.32  {d2-d3},  [%[out_y]]! \n" /*  store q1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
               : [cnt] "+r"(cnt4), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vbeta] "w"(vbeta)
-              : "q0", "q1", "cc", "memory");
+              : "q0", "q1", "q2", "cc", "memory");
         }
         for (int r = 0; r < m_remain; ++r) {
           y[r] = beta * y[r] + (in_y[r] > 0.f ? in_y[r] : 0.f);
@@ -817,20 +807,21 @@ void sgemv_trans(const int M,
           int cnt4 = m_cnt4;
           asm volatile(
               "1:\n"
+              "vld1.32  {d4-d5},  [%[out_y]]  \n" /* load old y to q2 */
               "vld1.32  {d0-d1},  [%[in_y]]!  \n" /*  load y to q0    */
               "vmax.f32 q1, q0,   %q[vzero]   \n" /*      q0 relu6    */
               "vmin.f32 q1, q1,   %q[vsix]    \n" /*      q0 relu6    */
-              "vadd.f32 q1, q1, %q[vbeta]     \n"
+              "vmla.f32 q1, q2,   %q[vbeta]   \n" /* add beta*old y   */
               "subs %[cnt], %[cnt], #1        \n" /*      sub cnt     */
               "vst1.32  {d2-d3},  [%[out_y]]! \n" /*  store q1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
               : [cnt] "+r"(cnt4), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [vsix] "w"(vsix), [vbeta] "w"(vbeta)
-              : "q0", "q1", "cc", "memory");
+              : "q0", "q1", "q2", "cc", "memory");
         }
         for (int r = 0; r < m_remain; ++r) {
           float tmp = in_y[r] > 0.f ? in_y[r] : 0.f;
-          y[r] = beta * y[r] + (tmp > six ? six : y[r]);
+          y[r] = beta * y[r] + (tmp > six ? six : tmp);
         }
       } else if (act == lite_api::ActivationType::kLeakyRelu) {
         float32x4_t valpha = vdupq_n_f32(alpha);
@@ -838,17 +829,19 @@ void sgemv_trans(const int M,
           int cnt4 = m_cnt4;
           asm volatile(
               "1:\n"
+              "vld1.32  {d4-d5}, [%[out_y]]   \n" /* load old y to q2 */
               "vld1.32  {d0-d1}, [%[in_y]]!   \n" /*   load y to q0   */
               "vcge.f32 q3, q0,  %q[vzero]    \n" /*    vcgeq_f32     */
               "vmul.f32 q4, q0,  %q[valpha]   \n" /*    vmulq_f32     */
-              "vbif q0, q4, q3                \n" /*      choose      */
-              "vadd.f32 q0, q0, %q[vbeta]     \n"
+              "vmov      q1, q0               \n" /*   copy in_y      */
+              "vbif q1, q4, q3                \n" /*      choose      */
+              "vmla.f32 q1, q2,  %q[vbeta]    \n" /* add beta*old y   */
               "subs %[cnt], %[cnt], #1        \n" /*      sub cnt     */
-              "vst1.32  {d0-d1}, [%[out_y]]!  \n" /*  store q0 to y   */
+              "vst1.32  {d2-d3}, [%[out_y]]!  \n" /*  store q1 to y   */
               "bne  1b                        \n" /* branch to label 1*/
               : [cnt] "+r"(cnt4), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero), [valpha] "w"(valpha), [vbeta] "w"(vbeta)
-              : "q0", "q3", "q4", "cc", "memory");
+              : "q0", "q1", "q2", "q3", "q4", "cc", "memory");
         }
         for (int r = 0; r < m_remain; ++r) {
           y[r] = beta * y[r] + (in_y[r] < 0.f ? alpha * in_y[r] : in_y[r]);
@@ -861,15 +854,16 @@ void sgemv_trans(const int M,
           int cnt4 = m_cnt4;
           asm volatile(
               "1:\n"
+              "vld1.32  {d4-d5}, [%[out_y]]   \n" /* load old y to q2 */
               "vld1.32  {d0-d1}, [%[in_y]]!   \n"
               "vadd.f32 q3, q0,  %q[voffset]  \n"
               "vmul.f32 q4, q0,  %q[vscale]   \n"
               "vmax.f32 q5, q3,  %q[vzero]    \n"
               "vmin.f32 q5, q5,  %q[vthreshold]\n"
-              "vmul.f32 q0, q5, q4            \n"
-              "vadd.f32 q0, q0, %q[vbeta]     \n"
+              "vmul.f32 q1, q5, q4            \n"
+              "vmla.f32 q1, q2, %q[vbeta]     \n" /* add beta*old y   */
               "subs %[cnt], %[cnt], #1        \n"
-              "vst1.32  {d0-d1}, [%[out_y]]!  \n"
+              "vst1.32  {d2-d3}, [%[out_y]]!  \n"
               "bne  1b                        \n"
               : [cnt] "+r"(cnt4), [in_y] "+r"(in_y), [out_y] "+r"(y)
               : [vzero] "w"(vzero),
@@ -877,7 +871,7 @@ void sgemv_trans(const int M,
                 [vbeta] "w"(vbeta),
                 [voffset] "w"(voffset),
                 [vthreshold] "w"(vthreshold)
-              : "q0", "q3", "q4", "q5", "cc", "memory");
+              : "q0", "q1", "q2", "q3", "q4", "q5", "cc", "memory");
         }
         for (int r = 0; r < m_remain; ++r) {
           auto tmp =
