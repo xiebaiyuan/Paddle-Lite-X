@@ -1,49 +1,50 @@
-# Paddle Lite
+# Paddle Lite · Research Fork
 
-[简体中文](README.md) | English
+> A **research and study** fork of Paddle Lite. Not an official release, with no stability promise.
 
-[![Build Status](https://travis-ci.org/PaddlePaddle/Paddle-Lite.svg?branch=develop&longCache=true&style=flat-square)](https://travis-ci.org/PaddlePaddle/Paddle-Lite)  [![Documentation Status](https://img.shields.io/badge/中文文档-最新-brightgreen.svg)](https://www.paddlepaddle.org.cn/lite)  [![Release](https://img.shields.io/github/release/PaddlePaddle/Paddle-Lite.svg)](https://github.com/PaddlePaddle/Paddle-Lite/releases)  [![License](https://img.shields.io/badge/license-Apache%202-blue.svg)](LICENSE)
+This repository is forked from [PaddlePaddle/Paddle-Lite](https://github.com/PaddlePaddle/Paddle-Lite). The only thing happening here is source reading, hypothesis testing, and small changes proven (or disproven) by reproducible experiments. The bar is "does it explain the problem", not "is it faster".
 
+## What is being explored
 
-Paddle Lite is an updated version of Paddle-Mobile, an open-open source deep learning framework designed to make it easy to perform inference on mobile, embeded, and IoT devices. It is compatible with PaddlePaddle and pre-trained models from other sources.
+### 1. Graph optimization (MIR)
 
-For tutorials, please see [PaddleLite Document](https://www.paddlepaddle.org.cn/lite).
+- **Convergence-style pass orchestration**: run a pass group until the graph stops changing; legacy passes run only in the first round so they never re-match nodes that were already deleted. Off by default; enabled at compile time with `LITE_WITH_PASS_MANAGER_V2`.
+- **Unified activation fusion**: activation checks gathered into one place, separating "can fuse" from "how to fuse".
+- **Elimination and folding**: assign elimination, dynamic-shape recovery, `reshape2`+`cast` folding, identity transpose and layer-norm folding, plus gelu / div-mul / scale-clip-mul pattern fusion.
+- **Observability**: `opt` gained `--discarded_passes` so a single pass can be turned off for A/B experiments.
 
-## Key Features
+### 2. ARM kernels
 
-- Multiple platform support, covering Android and iOS devices, embedded Linux, Windows, macOS and Linux computer.
-- Diverse language support, which includes Java, C++, and Python.
-- High performance and light weight: optimized for on-device machine learning, reduced model and binary size, efficient inference and reduced memory usage.
+- Convolution + activation fusion paths, including how activations that cannot be expressed by a bit flag fall back to a general implementation.
+- Boundary conditions in the `sgemv` family: pointer advance inside inline assembly, remainder tails, per-thread buffer partitioning.
+- Argument validation at hot math entry points, so out-of-bounds becomes a readable error instead of a random crash.
 
+### 3. Build and toolchain
 
-## Architecture
+- Usability fixes for Apple Silicon and Android cross builds.
+- Unified ccache, explicit cmake minimum, corrected SDK and compiler probing.
 
-Paddle Lite is designed to support a wide range of hardwares and devices, and it enables mixed execution of a single model on multiple devices, optimization on various phases, and light-weighted applications on devices.
+## Method
 
-![img](https://paddlelite-demo.bj.bcebos.com/devices/generic/paddle_lite_with_nnadapter.jpg)
+Changes here aim to be reproducible, attributable (same input, same metric, before and after), and revertible (uncertain changes sit behind a switch that defaults to the old behaviour).
 
-As is shown in the figure above, analysis phase includes Machine IR module, and it enables optimizations like Op fusion and redundant computation pruning. Besides, excecution phase only involves Kernal execution, so it can be deployed on its own to ensure maximum light-weighted deployment.
+## Build
 
-## Key Info about the Update
+```bash
+./lite/tools/build_android.sh --arch=armv8      # Android
+./lite/tools/build_macos.sh arm64               # macOS (Apple Silicon)
+./lite/tools/build_macos.sh build_optimize_tool # opt tool
+./lite/tools/build_macos.sh --with_testing=ON arm64
+```
 
-The earlier Paddle-Mobile was designed to be compatible with PaddlePaddle and multiple hardwares, including ARM CPU, Mali GPU, Adreno GPU, FPGA, ARM-Linux and Apple's GPU Metal. Within Baidu, inc, many product lines have been using Paddle-Mobile.
+Built with cmake 3.22. The floor in `CMakeLists.txt` is 3.10, but 3.10.3 does not build and 4.x is unverified. Compiler must support C++11. Output lands in `build.lite.<platform>.<arch>[.<variant>]/`.
 
-As an update of Paddle-Mobile, Paddle Lite has incorporated many older capabilities into the [new architecture](https://github.com/PaddlePaddle/Paddle-Lite/tree/develop/lite).
+## Relation to upstream
 
-## Special Thanks
+- Upstream: https://github.com/PaddlePaddle/Paddle-Lite
+- License: Apache-2.0, see [LICENSE](LICENSE)
+- Experimental changes here are not guaranteed to land upstream, and interfaces are not guaranteed stable.
 
-Paddle Lite has referenced the following open-source projects:
+## Disclaimer
 
-- [ARM compute library](https://github.com/ARM-software/ComputeLibrary)
-- [Anakin](https://github.com/PaddlePaddle/Anakin). The optimizations under Anakin has been incorporated into Paddle Lite, and so there will not be any future updates of Anakin. As another high-performance inference project under PaddlePaddle, Anakin has been forward-looking and helpful to the making of Paddle Lite.  
-
-
-
-## Feedback and Community Support
-
-- Questions, reports, and suggestions are welcome through Github Issues!
-- Forum: Opinions and questions are welcome at our [PaddlePaddle Forum](https://ai.baidu.com/forum/topic/list/168)！
-- WeChat Official Account: PaddlePaddle
-- QQ Group Chat: 696965088
-<p align="center"><img width="200" height="200"  src="https://user-images.githubusercontent.com/45189361/64117959-1969de80-cdc9-11e9-84f7-e1c2849a004c.jpeg"/>&#8194;&#8194;&#8194;&#8194;&#8194;<img width="200" height="200" margin="500" src="https://user-images.githubusercontent.com/45189361/64117844-cb54db00-cdc8-11e9-8c08-24bbe594608e.jpeg"/></p>
-<p align="center">&#8194; WeChat Official Account&#8194;&#8194;&#8194;&#8194;&#8194;&#8194;&#8194;&#8194;&#8194;&#8194;&#8194;QQ Group Chat&#8194;&#8194;&#8194;&#8194;&#8194;</p>
+Research code. It may be restructured at any time and may contain unverified conclusions. Do not rely on it where stability matters.
